@@ -1,6 +1,9 @@
+import jwt from 'jsonwebtoken';
 import { findUser } from '../../services/users/users.services';
 import Security from '../../utils/security';
+import { initializeConnection, getGooglePlusAPI, urlGoogle } from '../../utils/google_config';
 import { SERVER_ERROR_MESSAGE, LOGIN_SUCESS, INVALID_USER } from '../../utils/constant';
+import 'dotenv/config';
 
 export const logInUser = async (req, res) => {
   try {
@@ -28,4 +31,36 @@ export const logInUser = async (req, res) => {
   }
 };
 
-export const loginWithGoogle = async () => { };
+
+export const getLoginUrlFromGoogle = async (req, res, next) => {
+  try {
+    const googleUrl = await urlGoogle();
+
+    res.status(200).send(googleUrl);
+    return next();
+  } catch (error) {
+    return res.status(500).json({ status: 500, message: 'Internal Server Error' });
+  }
+};
+
+export const getCodeAccoutnFromCode = async (req, res, next) => {
+  try {
+    const { code } = req.query;
+    const authData = initializeConnection();
+
+    const data = await authData.getToken(code);
+    const { tokens } = data;
+    // add the tokens to the google api so we have access to the account
+    authData.setCredentials(tokens);
+    const plus = await getGooglePlusAPI({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET
+    });
+    const me = await plus.people.get({ userId: 'me' });
+    await jwt.verify(tokens.access_token, process.env.JWT_SECRET);
+
+    return res.status(200).send(me);
+  } catch (error) {
+    return res.status(500).json({ status: 500, message: 'Internal Server Error' });
+  }
+};
